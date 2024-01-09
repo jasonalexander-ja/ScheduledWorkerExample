@@ -1,0 +1,59 @@
+﻿@using System.Threading.Channels
+
+@page "/"
+@inject ScheduledWorkerService<RequestModel, ResponseModel> ScheduledWorker
+
+<PageTitle>Index</PageTitle>
+
+<MudText Typo="Typo.h3" GutterBottom="true">Hello, world! @Message</MudText>
+<MudText Class="mb-8">Welcome to your new app, powered by MudBlazor!</MudText>
+<MudAlert Severity="Severity.Normal">You can find documentation and examples on our website here: <MudLink Href="https://mudblazor.com" Typo="Typo.body2" Color="Color.Inherit"><b>www.mudblazor.com</b></MudLink></MudAlert>
+
+
+
+
+    @code {
+    public int Timer { get; set; } = 10;
+    public string Message { get; set; } = string.Empty;
+
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            SendMessage();
+    }
+
+    public async Task SendMessage()
+    {
+        // Make a channel for responses to be send back down 
+        Channel<Response<ResponseModel>> channel = Channel.CreateUnbounded<Response<ResponseModel>>();
+        
+        // Make a simple request body 
+        var requestBody = new RequestModel("Hello world");
+
+        // Send a request 
+        await ScheduledWorker.SchedulingSender.WriteAsync(new Request<RequestModel, ResponseModel>(channel.Writer, requestBody));
+        while (true)
+        {
+            // Wait for a response 
+            var response = await channel.Reader.ReadAsync();
+
+            // If a queue update, just display the queue position 
+            if (response.IsSchedulerMessage)
+            {
+                Message = $"Schedule pos. {response.SchedulingMessage?.Position ?? 0}";
+                StateHasChanged(); // Updates the view
+            }
+            // If a message from the worker thread, display the contents, then exit (no more responses expected)
+            if (response.IsWorkerMessage)
+            {
+                Message = response.Message?.Message ?? "Response message is null. ";
+                StateHasChanged(); // Updates the view
+                return; 
+            }
+
+        }
+    }
+
+}
+
